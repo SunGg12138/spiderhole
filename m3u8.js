@@ -1,62 +1,100 @@
-#!/usr/bin/env node
-// https://1252524126.vod2.myqcloud.com/9764a7a5vodtransgzp1252524126/d85e2c425285890815859396666/drm/
-const program = require('commander');
-program
-  .requiredOption('-p, --path <path>', '你本地的m3u8路径')
-  .option('-tsp, --ts-path <ts_path>', 'ts基础路径')
-  .parse(process.argv);
-
-const path = require('path');
 const fs = require('fs-extra');
 const m3u8Parser = require('m3u8-parser');
-const { promiseBatch, writeRequest } = require('./helpers');
-const m3u8_file_path = program.opts().path;
-const ts_path = program.opts().ts_path || '';
-const m3u8_path_parser = path.parse(m3u8_file_path);
-const ts_out_dir = m3u8_path_parser.dir + '/' + m3u8_path_parser.name + '_ts';
-
-main().catch(console.log);
-
-async function  main () {
-    // 获取m3u8内容
-    const manifest = await fs.readFile(m3u8_file_path);
-    // 解析m3u8内容
-    const parser = new m3u8Parser.Parser();
-    parser.push(manifest);
-    parser.end();
-    const parsedManifest = parser.manifest;
-    
-    await fs.ensureDir(ts_out_dir);
-
-    const error_files = await saveFile(parsedManifest.segments);
-
-    console.log('爬取完成', m3u8_file_path);
-    if (error_files.length > 0) {
-        console.log('出错文件', error_files);
+const { promiseBatch, writeRequest, spawn } = require('./helpers');
+class M3u8Spider {
+    constructor (m3u8_txt, ts_pash = '') {
+        this.name = Date.now() + '_' + Math.floor(Math.random() * 10);
+        this.ts_pash = ts_pash;
+        this.temp_dir = __dirname + '/temp/' + this.name;
+        this.spawn_m3u8_path = this.temp_dir + '/index.m3u8';
+        this.m3u8Parser = this.parseM3u8(m3u8_txt);
+        this.spawn_manifest = [];
     }
-}
 
-// save file
-async function saveFile(segments, retry = 5) {
-    const error_files = [];
-    await promiseBatch(segments, async function (segment) {
-        const uri = ts_path + segment.uri;
-        const ts_name = path.parse(uri).name;
-        try {
-            await writeRequest({url: uri, timeout: 20000}, fs.createWriteStream(ts_out_dir + '/' + ts_name + '.ts'));
-        } catch (error) {
-            if (!retry) {
-                console.log(error);
-                console.log('出错文件', uri);
+    parseM3u8 (m3u8_txt) {
+        // 解析m3u8内容
+        const parser = new m3u8Parser.Parser();
+        parser.push(m3u8_txt);
+        parser.end();
+        return parser;
+    }
+
+    // 下载
+    async download () {
+        await fs.ensureDir(this.temp_dir);
+
+        await promiseBatch(this.m3u8Parser.manifest.segments, async (segment, index) => {
+            const spawn_segment = JSON.parse(JSON.stringify(segment));
+
+            const ts_uri = this.ts_pash + segment.uri;
+            const ts_name = 'ts_' + index + '.ts';
+            const ts_fullpath = this.temp_dir + '/' + ts_name;
+            while (true) {
+                try {
+                    await writeRequest({url: ts_uri, timeout: 10000}, fs.createWriteStream(ts_fullpath));
+                    spawn_segment.uri = ts_fullpath;
+                    break;
+                } catch (error) {}
             }
-            error_files.push(segment);
-        }
-    });
 
-    if (retry && error_files.length > 0) {
-        console.log('尝试重新爬取错误文件');
-        return saveFile(error_files, --retry);
+            if (segment.key && segment.key.uri) {
+                const ts_key_uri = segment.key.uri;
+                const ts_key_name = 'key_' + index;
+                const ts_key_fullpath = this.temp_dir + '/' + ts_key_name;
+                while (true) {
+                    try {
+                        await writeRequest({url: ts_key_uri, timeout: 10000}, fs.createWriteStream(ts_key_fullpath));
+                        spawn_segment.key.uri = ts_key_fullpath;
+                        break;
+                    } catch (error) {}
+                }
+            }
+
+            this.spawn_manifest[index] = spawn_segment;
+        });
     }
 
-    return Promise.resolve(error_files);
+    spawnM3u8 () {
+        const m3u8 = [
+            '#EXTM3U'
+        ];
+        const { version, targetDuration, mediaSequence, endList } = this.m3u8Parser.manifest;
+
+        m3u8.push(`#EXT-X-VERSION:${version}`);
+        m3u8.push(`#EXT-X-TARGETDURATION:${targetDuration}`);
+        m3u8.push(`#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`);
+
+        this.spawn_manifest.forEach(segment => {
+            if (segment.key) {
+                m3u8.push(`#EXT-X-KEY:METHOD=${segment.key.method},URI="${segment.key.uri}",IV=${'0x00000000000000000000000000000000'}`);
+            }
+            if (segment.duration) {
+                m3u8.push(`#EXTINF:${segment.duration},`);
+            }
+            m3u8.push(`${segment.uri}`);
+        });
+
+        if (endList) {
+            m3u8.push(`#EXT-X-ENDLIST`);
+        }
+
+        return m3u8.join('\n');
+    }
 }
+
+exports.spider = async function (name, m3u8_txt, ts_pash) {
+    const spider = new M3u8Spider(m3u8_txt, ts_pash);
+    await spider.download();
+    await fs.writeFile(spider.spawn_m3u8_path, spider.spawnM3u8());
+    spawn('ffmpeg', [
+        '-allowed_extensions', 'ALL',
+        '-y',
+        '-f',
+        'hls',
+        '-i', '/Users/sunjinguang/repository/spiderhole/temp/1616476073625_2/index.m3u8',
+        '-bsf:v', 'h264_mp4toannexb,dump_extra',
+        '-bsf:a', 'aac_adtstoasc',
+        '-c', 'copy',
+        name + '.mp4'
+    ], { shell:true });
+};
