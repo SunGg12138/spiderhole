@@ -2,7 +2,7 @@ const fs = require('fs-extra');
 const m3u8Parser = require('m3u8-parser');
 const { promiseBatch, writeRequest, spawn } = require('./helpers');
 class M3u8Spider {
-    constructor (m3u8_txt, ts_pash = '') {
+    constructor (m3u8_txt, ts_pash) {
         this.name = Date.now() + '_' + Math.floor(Math.random() * 10);
         this.ts_pash = ts_pash;
         this.temp_dir = __dirname + '/temp/' + this.name;
@@ -58,10 +58,11 @@ class M3u8Spider {
         const m3u8 = [
             '#EXTM3U'
         ];
-        const { version, targetDuration, mediaSequence, endList } = this.m3u8Parser.manifest;
+        const { allowCache, version, targetDuration, mediaSequence, endList } = this.m3u8Parser.manifest;
 
         m3u8.push(`#EXT-X-VERSION:${version}`);
         m3u8.push(`#EXT-X-TARGETDURATION:${targetDuration}`);
+        if (allowCache) m3u8.push(`#EXT-X-ALLOW-CACHE:YES`);
         m3u8.push(`#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`);
 
         this.spawn_manifest.forEach(segment => {
@@ -82,19 +83,22 @@ class M3u8Spider {
     }
 }
 
-exports.spider = async function (name, m3u8_txt, ts_pash) {
+exports.spider = async function (name, m3u8_txt, ts_pash = '', del = false) {
     const spider = new M3u8Spider(m3u8_txt, ts_pash);
     await spider.download();
     await fs.writeFile(spider.spawn_m3u8_path, spider.spawnM3u8());
-    spawn('ffmpeg', [
+    await spawn('ffmpeg', [
         '-allowed_extensions', 'ALL',
         '-y',
         '-f',
         'hls',
-        '-i', '/Users/sunjinguang/repository/spiderhole/temp/1616476073625_2/index.m3u8',
+        '-i', spider.spawn_m3u8_path,
         '-bsf:v', 'h264_mp4toannexb,dump_extra',
         '-bsf:a', 'aac_adtstoasc',
         '-c', 'copy',
         name + '.mp4'
-    ], { shell:true });
+    ], { shell: true });
+    if (del) await fs.remove(spider.temp_dir);
+
+    return spider;
 };

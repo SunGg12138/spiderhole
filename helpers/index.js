@@ -46,7 +46,10 @@ exports.spawn = async function (command, args) {
         console.log(data.toString());
     });
 
-    app.on('close', (code) => {
-        console.log(`${command}进程退出，退出码 ${code}`);
+    return new Promise((re) => {
+        app.on('close', (code) => {
+            console.log(`${command}进程退出，退出码 ${code}`);
+            re();
+        });
     });
 };
