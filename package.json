@@ -1,0 +1,19 @@
+{
+  "name": "spiderhole",
+  "version": "1.0.0",
+  "description": "",
+  "main": "m3u8.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^7.1.0",
+    "fs-extra": "^9.1.0",
+    "m3u8-parser": "^4.6.0",
+    "node-request-slim": "^1.0.7",
+    "request": "^2.88.2"
+  }
+}

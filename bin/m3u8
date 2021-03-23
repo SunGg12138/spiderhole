@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+
+const program = require('commander');
+program
+  .requiredOption('-p, --path <path>', '你本地的m3u8路径')
+  .option('-tsp, --ts-path <ts_path>', 'ts基础路径')
+  .parse(process.argv);
