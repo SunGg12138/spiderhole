@@ -11,8 +11,8 @@ class M3u8Spider {
         this.spawn_manifest = [];
     }
 
+    // 解析m3u8内容
     parseM3u8 (m3u8_txt) {
-        // 解析m3u8内容
         const parser = new m3u8Parser.Parser();
         parser.push(m3u8_txt);
         parser.end();
@@ -23,7 +23,7 @@ class M3u8Spider {
     async download () {
         await fs.ensureDir(this.temp_dir);
 
-        await promiseBatch(this.m3u8Parser.manifest.segments, async (segment, index) => {
+        await promiseBatch(this.m3u8Parser.manifest.segments, 50, async (segment, index) => {
             const spawn_segment = JSON.parse(JSON.stringify(segment));
 
             const ts_uri = this.ts_pash + segment.uri;
@@ -34,7 +34,9 @@ class M3u8Spider {
                     await writeRequest({url: ts_uri, timeout: 10000}, fs.createWriteStream(ts_fullpath));
                     spawn_segment.uri = ts_fullpath;
                     break;
-                } catch (error) {}
+                } catch (error) {
+                    console.log(error)
+                }
             }
 
             if (segment.key && segment.key.uri) {
@@ -46,7 +48,9 @@ class M3u8Spider {
                         await writeRequest({url: ts_key_uri, timeout: 10000}, fs.createWriteStream(ts_key_fullpath));
                         spawn_segment.key.uri = ts_key_fullpath;
                         break;
-                    } catch (error) {}
+                    } catch (error) {
+                        console.log(error)
+                    }
                 }
             }
 

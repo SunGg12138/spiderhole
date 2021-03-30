@@ -1,9 +1,8 @@
 const request = require('request');
 const { spawn } = require('child_process');
 
-exports.promiseBatch = async function (list, func) {
+exports.promiseBatch = async function (list, limit = 50, func) {
     let start = 0;
-    let limit = 50;
 
     let parts = list.slice(start, limit);
 
