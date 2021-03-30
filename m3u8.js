@@ -26,7 +26,8 @@ class M3u8Spider {
         await promiseBatch(this.m3u8Parser.manifest.segments, 50, async (segment, index) => {
             const spawn_segment = JSON.parse(JSON.stringify(segment));
 
-            const ts_uri = this.ts_pash + segment.uri;
+            // 如果是路径需要拼接ts基础路径，否则直接使用
+            const ts_uri = /^http(s):/.test(segment.uri)? segment.uri : this.ts_pash + segment.uri
             const ts_name = 'ts_' + index + '.ts';
             const ts_fullpath = this.temp_dir + '/' + ts_name;
             while (true) {
