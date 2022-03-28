@@ -19,8 +19,6 @@ async function main () {
 
     console.log(program.opts())
 
-    return
-
     if (!url && !path) throw new Error('url 和 path 必须二选一');
 
     // 获取m3u8文件内容
